@@ -1,0 +1,196 @@
+
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Sprawdź zwycięzcę pokerowego rozdania</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: #f2f2f2;
+        }
+        h2 {
+            color: #00ffcc;
+        }
+        .card-slot {
+            display: inline-block;
+            margin: 5px;
+            padding: 10px;
+            border: 2px dashed #444;
+            border-radius: 10px;
+            cursor: pointer;
+            width: 60px;
+            height: 90px;
+            background-color: #2b2b2b;
+            text-align: center;
+            vertical-align: top;
+        }
+        .card-slot img {
+            width: 100%;
+        }
+        select {
+            margin: 5px;
+            padding: 5px;
+        }
+        .player {
+            margin-bottom: 15px;
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background-color: #00ffcc;
+            border: none;
+            color: #000;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 1.2em;
+            color: #ffcc00;
+        }
+    </style>
+</head>
+<body>
+    <h2>Główne karty (max 5):</h2>
+    <div id="community-cards"></div>
+    <button onclick="addCommunityCard()">Dodaj kartę</button>
+
+    <h2>Gracze:</h2>
+    <div id="players"></div>
+    <button onclick="addPlayer()">Dodaj gracza</button>
+
+    <br><br>
+    <button onclick="checkWinner()">Sprawdź zwycięzcę</button>
+
+    <div id="result"></div>
+
+    <script>
+        const suits = ['s', 'h', 'd', 'c'];
+        const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+
+        let communityCards = [];
+        let players = [];
+
+        function addCommunityCard() {
+            if (communityCards.length >= 5) return alert("Maksymalnie 5 kart wspólnych.");
+            const card = createCardSelector(`community-${communityCards.length}`);
+            document.getElementById("community-cards").appendChild(card.container);
+            communityCards.push(card);
+        }
+
+        function addPlayer() {
+            const playerIndex = players.length;
+            const player = {
+                cards: [
+                    createCardSelector(`player-${playerIndex}-card1`),
+                    createCardSelector(`player-${playerIndex}-card2`)
+                ]
+            };
+            const div = document.createElement("div");
+            div.className = "player";
+            div.innerHTML = `<strong>Gracz ${playerIndex + 1}:</strong><br>`;
+            div.appendChild(player.cards[0].container);
+            div.appendChild(player.cards[1].container);
+            document.getElementById("players").appendChild(div);
+            players.push(player);
+        }
+
+        function createCardSelector(id) {
+            const container = document.createElement("div");
+            container.className = "card-slot";
+            const valueSelect = document.createElement("select");
+            values.forEach(v => {
+                const opt = document.createElement("option");
+                opt.value = v;
+                opt.innerText = v;
+                valueSelect.appendChild(opt);
+            });
+            const suitSelect = document.createElement("select");
+            suits.forEach(s => {
+                const opt = document.createElement("option");
+                opt.value = s;
+                opt.innerText = suitToSymbol(s);
+                suitSelect.appendChild(opt);
+            });
+
+            container.appendChild(valueSelect);
+            container.appendChild(suitSelect);
+
+            return {
+                container,
+                getValue: () => valueSelect.value + suitSelect.value
+            };
+        }
+
+        function suitToSymbol(suit) {
+            switch (suit) {
+                case 's': return '♠';
+                case 'h': return '♥';
+                case 'd': return '♦';
+                case 'c': return '♣';
+            }
+        }
+
+        function getAllCards() {
+            return communityCards.map(c => c.getValue())
+                .concat(players.flatMap(p => p.cards.map(c => c.getValue())));
+        }
+
+        function parseCard(card) {
+            const valueMap = {'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14};
+            return { value: valueMap[card.slice(0, -1)], suit: card.slice(-1), raw: card };
+        }
+
+        function evaluateHand(cards) {
+            // Prosty silnik do rozpoznawania strita i par
+            let counts = {}, suits = {}, values = [];
+
+            cards.forEach(c => {
+                const parsed = parseCard(c);
+                counts[parsed.value] = (counts[parsed.value] || 0) + 1;
+                suits[parsed.suit] = (suits[parsed.suit] || 0) + 1;
+                values.push(parsed.value);
+            });
+
+            values = [...new Set(values)].sort((a,b) => a-b);
+            let isStraight = false;
+            for (let i = 0; i <= values.length - 5; i++) {
+                if (values[i+4] - values[i] === 4) isStraight = true;
+            }
+            if (values.includes(14) && values.includes(2) && values.includes(3) && values.includes(4) && values.includes(5)) isStraight = true;
+
+            const countsArr = Object.values(counts).sort((a,b) => b-a);
+            if (countsArr[0] === 4) return { rank: 7, name: "Kareta" };
+            if (countsArr[0] === 3 && countsArr[1] >= 2) return { rank: 6, name: "Full" };
+            if (Object.values(suits).some(s => s >= 5)) return { rank: 5, name: "Kolor" };
+            if (isStraight) return { rank: 4, name: "Strit" };
+            if (countsArr[0] === 3) return { rank: 3, name: "Trójka" };
+            if (countsArr[0] === 2 && countsArr[1] === 2) return { rank: 2, name: "Dwie pary" };
+            if (countsArr[0] === 2) return { rank: 1, name: "Para" };
+            return { rank: 0, name: "Wysoka karta" };
+        }
+
+        function checkWinner() {
+            const community = communityCards.map(c => c.getValue());
+            const results = players.map((player, index) => {
+                const hand = player.cards.map(c => c.getValue()).concat(community);
+                const evalResult = evaluateHand(hand);
+                return { index, rank: evalResult.rank, name: evalResult.name };
+            });
+
+            const maxRank = Math.max(...results.map(r => r.rank));
+            const winners = results.filter(r => r.rank === maxRank);
+
+            if (winners.length > 1) {
+                document.getElementById("result").innerText = "Remis pomiędzy: " + winners.map(w => `Gracz ${w.index + 1} (${w.name})`).join(", ");
+            } else {
+                document.getElementById("result").innerText = `Zwycięzca: Gracz ${winners[0].index + 1} (${winners[0].name})`;
+            }
+        }
+    </script>
+</body>
+</html>
